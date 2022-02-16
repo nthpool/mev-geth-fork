@@ -104,19 +104,15 @@ type Call struct {
 	Calldata string `json:"calldata"`
 }
 
-type Logarr struct {
-	Calls []Call `json:"calls"`
-	Logs  []Log  `json:"logs"`
-}
-
 type Logret struct {
-	ErrCode string  `json:"errcode"`
-	Valid   bool    `json:"valid"`
-	Retval  *Logarr `json:"retVal"`
+	ErrCode string `json:"errcode"`
+	Valid   bool   `json:"valid"`
+	Calls   []Call `json:"calls"`
+	Logs    []Log  `json:"logs"`
 }
 
 type Log struct {
-	Topic           string `json:"address"`
+	Topic           string `json:"topic"`
 	Args            string `json:"args"`
 	ContractAddress string `json:"contractAddress"`
 }
@@ -148,10 +144,8 @@ func newLogTracer() tracers.Tracer {
 	t := &logTracer{
 		retValue: Logret{
 			Valid: true,
-			Retval: &Logarr{
-				Calls: make([]Call, 5),
-				Logs:  make([]Log, 5),
-			},
+			Calls: make([]Call, 0, 5),
+			Logs:  make([]Log, 0, 5),
 		},
 	}
 	return t
@@ -176,6 +170,11 @@ func (l *logTracer) CaptureStart(env *vm.EVM, from common.Address, to common.Add
 }
 
 func (l *logTracer) CaptureState(pc uint64, op vm.OpCode, gas, cost uint64, scope *vm.ScopeContext, rData []byte, depth int, err error) {
+	if err != nil {
+		l.retValue.Valid = false
+		l.retValue.ErrCode = err.Error()
+		return
+	}
 	switch op {
 	case 0xa1:
 		{
@@ -199,19 +198,19 @@ func (l *logTracer) CaptureState(pc uint64, op vm.OpCode, gas, cost uint64, scop
 					}
 					this.retVal.logs.push({topic: stack[2], args: str, contractAddress: addr});
 			*/
-			stackArr := scope.Stack.Data()
-			offset := stackArr[0].Uint64()
-			len := stackArr[1].Uint64()
+			//stackArr := scope.Stack.Data()
+			offset := scope.Stack.Back(0).Uint64()
+			len := scope.Stack.Back(1).Uint64()
 			mem := scope.Memory.Data()
 			args := mem[offset : offset+len]
-			topic := stackArr[2]
+			topic := scope.Stack.Back(2)
 			address := scope.Contract.CodeAddr
 			log := Log{
 				Topic:           bigToHex(topic.ToBig()),
 				Args:            bytesToHex(args),
 				ContractAddress: addrToHex(*address),
 			}
-			l.retValue.Retval.Logs = append(l.retValue.Retval.Logs, log)
+			l.retValue.Logs = append(l.retValue.Logs, log)
 		}
 	case 0xf1:
 		{
@@ -235,19 +234,24 @@ func (l *logTracer) CaptureState(pc uint64, op vm.OpCode, gas, cost uint64, scop
 				this.retVal.calls.push({address: stack[1], calldata: str});
 
 			*/
-			stackArr := scope.Stack.Data()
-			offset := stackArr[3].Uint64()
-			len := stackArr[4].Uint64()
+			//stackArr := scope.Stack.Data()
+			offset := scope.Stack.Back(3).Uint64() //stackArr[3].Uint64()
+			len := scope.Stack.Back(4).Uint64()
+			//fmt.Printf("CaptureState: opcode: %d offset: %s len: %s\n", op, stackArr[3].ToBig().Text(16), stackArr[4].ToBig().Text(16))
+			//scope.Stack.Print()
 			if len >= 4 {
 				len = 4
 			}
 			mem := scope.Memory.Data()
+			if offset+len > uint64(scope.Memory.Len()) {
+				return
+			}
 			calldata := mem[offset : offset+len]
 			call := Call{
-				Address:  bigToHex(stackArr[1].ToBig()),
+				Address:  bigToHex(scope.Stack.Back(1).ToBig()),
 				Calldata: bytesToHex(calldata),
 			}
-			l.retValue.Retval.Calls = append(l.retValue.Retval.Calls, call)
+			l.retValue.Calls = append(l.retValue.Calls, call)
 		}
 	default:
 		{
