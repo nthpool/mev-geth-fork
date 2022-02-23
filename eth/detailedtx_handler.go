@@ -141,15 +141,19 @@ func (d *DetailedTxHandler) makeDetailedTx(tx *types.Transaction) (*types.Detail
 	if err != nil {
 		return nil, err
 	}
-	return &types.DetailedTransaction{tx, ex}, nil
+	return &types.DetailedTransaction{Inner: tx, ExecutionResult: ex}, nil
 }
 
 func (d *DetailedTxHandler) traceTx(event core.NewTxsEvent) []*types.DetailedTransaction {
-	dtx := make([]*types.DetailedTransaction, 0, len(event.Txs))
+	dtxa := make([]*types.DetailedTransaction, 0, len(event.Txs))
 	for _, tx := range event.Txs {
-		dtx = append(dtx, d.makeDetailedTx(tx))
+		dtx, err := d.makeDetailedTx(tx)
+		if err != nil {
+			continue
+		}
+		dtxa = append(dtxa, dtx)
 	}
-	return dtx
+	return dtxa
 }
 
 func (d *DetailedTxHandler) txLoop() {
