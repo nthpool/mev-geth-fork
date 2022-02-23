@@ -50,6 +50,8 @@ const (
 	// PendingTransactionsSubscription queries tx hashes for pending
 	// transactions entering the pending state
 	PendingTransactionsSubscription
+	// DetailedPendingTransactionsSubscription
+	DetailedPendingTransactionsSubscription
 	// BlocksSubscription queries hashes for blocks that are imported
 	BlocksSubscription
 	// LastSubscription keeps track of the last index
@@ -69,15 +71,16 @@ const (
 )
 
 type subscription struct {
-	id        rpc.ID
-	typ       Type
-	created   time.Time
-	logsCrit  ethereum.FilterQuery
-	logs      chan []*types.Log
-	hashes    chan []common.Hash
-	headers   chan *types.Header
-	installed chan struct{} // closed when the filter is installed
-	err       chan error    // closed when the filter is uninstalled
+	id           rpc.ID
+	typ          Type
+	created      time.Time
+	logsCrit     ethereum.FilterQuery
+	logs         chan []*types.Log
+	transactions chan []*types.DetailedTransaction
+	hashes       chan []common.Hash
+	headers      chan *types.Header
+	installed    chan struct{} // closed when the filter is installed
+	err          chan error    // closed when the filter is uninstalled
 }
 
 // EventSystem creates subscriptions, processes events and broadcasts them to the
@@ -102,6 +105,7 @@ type EventSystem struct {
 	pendingLogsCh chan []*types.Log          // Channel to receive new log event
 	rmLogsCh      chan core.RemovedLogsEvent // Channel to receive removed log event
 	chainCh       chan core.ChainEvent       // Channel to receive new chain event
+
 }
 
 // NewEventSystem creates a new manager that listens for event on the given mux,
@@ -167,6 +171,7 @@ func (sub *Subscription) Unsubscribe() {
 			case <-sub.f.logs:
 			case <-sub.f.hashes:
 			case <-sub.f.headers:
+			case <-sub.f.transactions:
 			}
 		}
 
@@ -306,6 +311,21 @@ func (es *EventSystem) SubscribePendingTxs(hashes chan []common.Hash) *Subscript
 	return es.subscribe(sub)
 }
 
+func (es *EventSystem) SubscribeDetailedPendingTxs(txs chan []*types.DetailedTransaction) *Subscription {
+	sub := &subscription{
+		id:           rpc.NewID(),
+		typ:          DetailedPendingTransactionsSubscription,
+		created:      time.Now(),
+		logs:         make(chan []*types.Log),
+		hashes:       make(chan []common.Hash),
+		transactions: txs,
+		headers:      make(chan *types.Header),
+		installed:    make(chan struct{}),
+		err:          make(chan error),
+	}
+	return es.subscribe(sub)
+}
+
 type filterIndex map[Type]map[rpc.ID]*subscription
 
 func (es *EventSystem) handleLogs(filters filterIndex, ev []*types.Log) {
@@ -349,7 +369,10 @@ func (es *EventSystem) handleTxsEvent(filters filterIndex, ev core.NewTxsEvent) 
 	for _, f := range filters[PendingTransactionsSubscription] {
 		f.hashes <- hashes
 	}
+
 }
+
+//func (es *EventSystem) handleDetailedTxsEvent(filters filterIndex, ev)
 
 func (es *EventSystem) handleChainEvent(filters filterIndex, ev core.ChainEvent) {
 	for _, f := range filters[BlocksSubscription] {

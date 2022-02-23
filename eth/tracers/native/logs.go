@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/ethereum/go-ethereum/common"
+	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/ethereum/go-ethereum/core/vm"
 	"github.com/ethereum/go-ethereum/eth/tracers"
 )
@@ -99,27 +100,9 @@ import (
 
 */
 
-type Call struct {
-	Address  string `json:"address"`
-	Calldata string `json:"calldata"`
-}
-
-type Logret struct {
-	ErrCode string `json:"errcode"`
-	Valid   bool   `json:"valid"`
-	Calls   []Call `json:"calls"`
-	Logs    []Log  `json:"logs"`
-}
-
-type Log struct {
-	Topic           string `json:"topic"`
-	Args            string `json:"args"`
-	ContractAddress string `json:"contractAddress"`
-}
-
-type logTracer struct {
+type LogTracer struct {
 	env       *vm.EVM
-	retValue  Logret
+	retValue  types.Logret
 	interrupt uint32 // Atomic flag to signal execution interruption
 	reason    error  // Textual reason for the interruption
 }
@@ -128,7 +111,7 @@ func init() {
 	register("logTracer", newLogTracer)
 }
 
-func (l *logTracer) String() string {
+func (l *LogTracer) String() string {
 	res, err := json.Marshal(l.retValue)
 	if err != nil {
 		return ""
@@ -141,17 +124,17 @@ func (l *logTracer) String() string {
 func newLogTracer() tracers.Tracer {
 	// First callframe contains tx context info
 	// and is populated on start and end.
-	t := &logTracer{
-		retValue: Logret{
+	t := &LogTracer{
+		retValue: types.Logret{
 			Valid: true,
-			Calls: make([]Call, 0, 5),
-			Logs:  make([]Log, 0, 5),
+			Calls: make([]types.TxCall, 0, 5),
+			Logs:  make([]types.TxLog, 0, 5),
 		},
 	}
 	return t
 }
 
-func (l *logTracer) GetResult() (json.RawMessage, error) {
+func (l *LogTracer) GetResult() (json.RawMessage, error) {
 	res, err := json.Marshal(l.retValue)
 	if err != nil {
 		return nil, err
@@ -160,16 +143,16 @@ func (l *logTracer) GetResult() (json.RawMessage, error) {
 }
 
 // Stop terminates execution of the tracer at the first opportune moment.
-func (t *logTracer) Stop(err error) {
+func (t *LogTracer) Stop(err error) {
 	t.reason = err
 	atomic.StoreUint32(&t.interrupt, 1)
 }
 
-func (l *logTracer) CaptureStart(env *vm.EVM, from common.Address, to common.Address, create bool, input []byte, gas uint64, value *big.Int) {
+func (l *LogTracer) CaptureStart(env *vm.EVM, from common.Address, to common.Address, create bool, input []byte, gas uint64, value *big.Int) {
 	l.env = env
 }
 
-func (l *logTracer) CaptureState(pc uint64, op vm.OpCode, gas, cost uint64, scope *vm.ScopeContext, rData []byte, depth int, err error) {
+func (l *LogTracer) CaptureState(pc uint64, op vm.OpCode, gas, cost uint64, scope *vm.ScopeContext, rData []byte, depth int, err error) {
 	if err != nil {
 		l.retValue.Valid = false
 		l.retValue.ErrCode = err.Error()
@@ -205,7 +188,7 @@ func (l *logTracer) CaptureState(pc uint64, op vm.OpCode, gas, cost uint64, scop
 			args := mem[offset : offset+len]
 			topic := scope.Stack.Back(2)
 			address := scope.Contract.CodeAddr
-			log := Log{
+			log := types.TxLog{
 				Topic:           bigToHex(topic.ToBig()),
 				Args:            bytesToHex(args),
 				ContractAddress: addrToHex(*address),
@@ -247,7 +230,7 @@ func (l *logTracer) CaptureState(pc uint64, op vm.OpCode, gas, cost uint64, scop
 				return
 			}
 			calldata := mem[offset : offset+len]
-			call := Call{
+			call := types.TxCall{
 				Address:  bigToHex(scope.Stack.Back(1).ToBig()),
 				Calldata: bytesToHex(calldata),
 			}
@@ -260,22 +243,22 @@ func (l *logTracer) CaptureState(pc uint64, op vm.OpCode, gas, cost uint64, scop
 	}
 }
 
-func (l *logTracer) CaptureEnter(typ vm.OpCode, from common.Address, to common.Address, input []byte, gas uint64, value *big.Int) {
+func (l *LogTracer) CaptureEnter(typ vm.OpCode, from common.Address, to common.Address, input []byte, gas uint64, value *big.Int) {
 
 }
 
-func (l *logTracer) CaptureExit(output []byte, gasUsed uint64, err error) {
+func (l *LogTracer) CaptureExit(output []byte, gasUsed uint64, err error) {
 
 }
 
-func (l *logTracer) CaptureFault(pc uint64, op vm.OpCode, gas, cost uint64, scope *vm.ScopeContext, depth int, err error) {
+func (l *LogTracer) CaptureFault(pc uint64, op vm.OpCode, gas, cost uint64, scope *vm.ScopeContext, depth int, err error) {
 	l.retValue.Valid = false
 	if err != nil {
 		l.retValue.ErrCode = err.Error()
 	}
 }
 
-func (l *logTracer) CaptureEnd(output []byte, gasUsed uint64, t time.Duration, err error) {
+func (l *LogTracer) CaptureEnd(output []byte, gasUsed uint64, t time.Duration, err error) {
 	if err != nil {
 		l.retValue.Valid = false
 		l.retValue.ErrCode = err.Error()
