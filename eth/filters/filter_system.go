@@ -92,19 +92,21 @@ type EventSystem struct {
 
 	// Subscriptions
 	txsSub         event.Subscription // Subscription for new transaction event
+	dtxsSub        event.Subscription // Subscription for new detailed tx event
 	logsSub        event.Subscription // Subscription for new log event
 	rmLogsSub      event.Subscription // Subscription for removed log event
 	pendingLogsSub event.Subscription // Subscription for pending log event
 	chainSub       event.Subscription // Subscription for new chain event
 
 	// Channels
-	install       chan *subscription         // install filter for event notification
-	uninstall     chan *subscription         // remove filter for event notification
-	txsCh         chan core.NewTxsEvent      // Channel to receive new transactions event
-	logsCh        chan []*types.Log          // Channel to receive new log event
-	pendingLogsCh chan []*types.Log          // Channel to receive new log event
-	rmLogsCh      chan core.RemovedLogsEvent // Channel to receive removed log event
-	chainCh       chan core.ChainEvent       // Channel to receive new chain event
+	install       chan *subscription            // install filter for event notification
+	uninstall     chan *subscription            // remove filter for event notification
+	txsCh         chan core.NewTxsEvent         // Channel to receive new transactions event
+	dtxsCh        chan core.NewDetailedTxsEvent // Channel to receive new detailed tx events
+	logsCh        chan []*types.Log             // Channel to receive new log event
+	pendingLogsCh chan []*types.Log             // Channel to receive new log event
+	rmLogsCh      chan core.RemovedLogsEvent    // Channel to receive removed log event
+	chainCh       chan core.ChainEvent          // Channel to receive new chain event
 
 }
 
@@ -121,6 +123,7 @@ func NewEventSystem(backend Backend, lightMode bool) *EventSystem {
 		install:       make(chan *subscription),
 		uninstall:     make(chan *subscription),
 		txsCh:         make(chan core.NewTxsEvent, txChanSize),
+		dtxsCh:        make(chan core.NewDetailedTxsEvent, txChanSize),
 		logsCh:        make(chan []*types.Log, logsChanSize),
 		rmLogsCh:      make(chan core.RemovedLogsEvent, rmLogsChanSize),
 		pendingLogsCh: make(chan []*types.Log, logsChanSize),
@@ -129,6 +132,7 @@ func NewEventSystem(backend Backend, lightMode bool) *EventSystem {
 
 	// Subscribe events
 	m.txsSub = m.backend.SubscribeNewTxsEvent(m.txsCh)
+	m.dtxsSub = m.backend.SubscribeDetailedPendingTxEvent(m.dtxsCh)
 	m.logsSub = m.backend.SubscribeLogsEvent(m.logsCh)
 	m.rmLogsSub = m.backend.SubscribeRemovedLogsEvent(m.rmLogsCh)
 	m.chainSub = m.backend.SubscribeChainEvent(m.chainCh)
@@ -372,6 +376,17 @@ func (es *EventSystem) handleTxsEvent(filters filterIndex, ev core.NewTxsEvent) 
 
 }
 
+func (es *EventSystem) handleDetailedTxsEvent(filters filterIndex, ev core.NewDetailedTxsEvent) {
+	dtxs := make([]*types.DetailedTransaction, 0, len(ev.Txs))
+	for _, tx := range ev.Txs {
+		dtxs = append(dtxs, tx)
+	}
+	for _, f := range filters[DetailedPendingTransactionsSubscription] {
+		f.transactions <- dtxs
+	}
+
+}
+
 //func (es *EventSystem) handleDetailedTxsEvent(filters filterIndex, ev)
 
 func (es *EventSystem) handleChainEvent(filters filterIndex, ev core.ChainEvent) {
@@ -482,6 +497,8 @@ func (es *EventSystem) eventLoop() {
 		select {
 		case ev := <-es.txsCh:
 			es.handleTxsEvent(index, ev)
+		case ev := <-es.dtxsCh:
+			es.handleDetailedTxsEvent(index, ev)
 		case ev := <-es.logsCh:
 			es.handleLogs(index, ev)
 		case ev := <-es.rmLogsCh:
