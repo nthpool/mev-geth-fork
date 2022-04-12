@@ -903,6 +903,14 @@ func (api *API) traceTx(ctx context.Context, message core.Message, txctx *Contex
 
 	result, err := core.ApplyMessage(vmenv, message, new(core.GasPool).AddGas(message.Gas()))
 	if err != nil {
+		switch tracer := tracer.(type) {
+		case Tracer:
+			// call GetResult to clean up the JS vm
+			tracer.GetResult()
+		default:
+			// do nothing
+			break
+		}
 		return nil, fmt.Errorf("tracing failed: %w", err)
 	}
 

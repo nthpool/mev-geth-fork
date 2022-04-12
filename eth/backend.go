@@ -74,6 +74,7 @@ type Ethereum struct {
 	ethDialCandidates  enode.Iterator
 	snapDialCandidates enode.Iterator
 	merger             *consensus.Merger
+	detailedTxHandler  *DetailedTxHandler
 
 	// DB interfaces
 	chainDb ethdb.Database // Block chain database
@@ -268,6 +269,8 @@ func New(stack *node.Node, config *ethconfig.Config) (*Ethereum, error) {
 
 	// Successful startup; push a marker and check previous unclean shutdowns.
 	eth.shutdownTracker.MarkStartup()
+
+	eth.detailedTxHandler = NewDetailedTxHandler(eth)
 
 	return eth, nil
 }
