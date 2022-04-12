@@ -860,6 +860,10 @@ func (fb *filterBackend) SubscribeNewTxsEvent(ch chan<- core.NewTxsEvent) event.
 	return nullSubscription()
 }
 
+func (b *filterBackend) SubscribeDetailedPendingTxEvent(ch chan<- core.NewDetailedTxsEvent) event.Subscription {
+	return nullSubscription()
+}
+
 func (fb *filterBackend) SubscribeChainEvent(ch chan<- core.ChainEvent) event.Subscription {
 	return fb.bc.SubscribeChainEvent(ch)
 }

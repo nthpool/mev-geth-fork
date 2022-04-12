@@ -244,7 +244,7 @@ func (b *EthAPIBackend) SendBundle(ctx context.Context, txs types.Transactions, 
 }
 
 func (b *EthAPIBackend) SendMegabundle(ctx context.Context, txs types.Transactions, blockNumber rpc.BlockNumber, minTimestamp uint64, maxTimestamp uint64, revertingTxHashes []common.Hash, relayAddr common.Address) error {
-    return b.eth.txPool.AddMegabundle(relayAddr, txs, big.NewInt(blockNumber.Int64()), minTimestamp, maxTimestamp, revertingTxHashes)
+	return b.eth.txPool.AddMegabundle(relayAddr, txs, big.NewInt(blockNumber.Int64()), minTimestamp, maxTimestamp, revertingTxHashes)
 }
 
 func (b *EthAPIBackend) GetPoolTransactions() (types.Transactions, error) {
@@ -287,6 +287,10 @@ func (b *EthAPIBackend) TxPool() *core.TxPool {
 
 func (b *EthAPIBackend) SubscribeNewTxsEvent(ch chan<- core.NewTxsEvent) event.Subscription {
 	return b.eth.TxPool().SubscribeNewTxsEvent(ch)
+}
+
+func (b *EthAPIBackend) SubscribeDetailedPendingTxEvent(ch chan<- core.NewDetailedTxsEvent) event.Subscription {
+	return b.eth.detailedTxHandler.SubscribeDetailedPendingTxEvent(ch)
 }
 
 func (b *EthAPIBackend) SyncProgress() ethereum.SyncProgress {

@@ -204,7 +204,7 @@ func (b *LesApiBackend) SendBundle(ctx context.Context, txs types.Transactions, 
 }
 
 func (b *LesApiBackend) SendMegabundle(ctx context.Context, txs types.Transactions, blockNumber rpc.BlockNumber, minTimestamp uint64, maxTimestamp uint64, revertingTxHashes []common.Hash, relayAddr common.Address) error {
-    return nil
+	return nil
 }
 
 func (b *LesApiBackend) GetPoolTransactions() (types.Transactions, error) {
@@ -237,6 +237,13 @@ func (b *LesApiBackend) TxPoolContentFrom(addr common.Address) (types.Transactio
 
 func (b *LesApiBackend) SubscribeNewTxsEvent(ch chan<- core.NewTxsEvent) event.Subscription {
 	return b.eth.txPool.SubscribeNewTxsEvent(ch)
+}
+
+func (b *LesApiBackend) SubscribeDetailedPendingTxEvent(ch chan<- core.NewDetailedTxsEvent) event.Subscription {
+	return event.NewSubscription(func(quit <-chan struct{}) error {
+		<-quit
+		return nil
+	})
 }
 
 func (b *LesApiBackend) SubscribeChainEvent(ch chan<- core.ChainEvent) event.Subscription {
