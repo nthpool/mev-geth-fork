@@ -14,14 +14,16 @@ import (
 	"github.com/ethereum/go-ethereum/core/vm"
 	"github.com/ethereum/go-ethereum/eth/tracers"
 	"github.com/ethereum/go-ethereum/eth/tracers/logger"
+	"github.com/ethereum/go-ethereum/event"
 	"github.com/ethereum/go-ethereum/internal/ethapi"
-	"github.com/ethereum/go-ethereum/rpc"
 )
 
 type DetailedTxHandler struct {
 	backend *Ethereum
 	txsCh   chan core.NewTxsEvent
-	dtxCh   chan core.NewDetailedTxsEvent
+	txsSub  event.Subscription
+	dtxFeed event.Feed
+	scope   event.SubscriptionScope
 	tracer  *tracers.API
 }
 
@@ -31,12 +33,13 @@ func NewDetailedTxHandler(backend *Ethereum) *DetailedTxHandler {
 		txsCh:   make(chan core.NewTxsEvent),
 		tracer:  tracers.NewAPI(backend.APIBackend),
 	}
+	dh.txsSub = backend.txPool.SubscribeNewTxsEvent(dh.txsCh)
 	go dh.txLoop()
 	return dh
 }
 
-func (d *DetailedTxHandler) SubscribeDetailedPendingTxEvent(dc chan core.NewDetailedTxsEvent) {
-	d.dtxCh = dc
+func (d *DetailedTxHandler) SubscribeDetailedPendingTxEvent(dc chan<- core.NewDetailedTxsEvent) event.Subscription {
+	return d.scope.Track(d.dtxFeed.Subscribe(dc))
 }
 
 func (d *DetailedTxHandler) customTrace(ctx context.Context, message core.Message,
@@ -119,9 +122,9 @@ func (d *DetailedTxHandler) customTrace(ctx context.Context, message core.Messag
 
 func (d *DetailedTxHandler) makeDetailedTx(tx *types.Transaction) (*types.DetailedTransaction, error) {
 	config := d.backend.BlockChain().Config()
-	blockNumber := rpc.PendingBlockNumber.Int64()
-	signer := types.MakeSigner(config, big.NewInt(0).SetInt64(blockNumber))
+	//blockNumber := rpc.PendingBlockNumber.Int64()
 	block := d.backend.BlockChain().CurrentBlock()
+	signer := types.MakeSigner(config, big.NewInt(0).SetUint64(block.NumberU64()))
 	msg, err := tx.AsMessage(signer, block.BaseFee())
 	if err != nil {
 		return nil, err
@@ -132,6 +135,9 @@ func (d *DetailedTxHandler) makeDetailedTx(tx *types.Transaction) (*types.Detail
 	}
 	vmctx := core.NewEVMBlockContext(block.Header(), d.backend.BlockChain(), nil)
 	res, err := d.customTrace(context.TODO(), msg, new(tracers.Context), vmctx, statedb, nil)
+	if err != nil {
+		return nil, err
+	}
 	jsond, ok := res.(json.RawMessage)
 	if !ok {
 		panic("bad response type")
@@ -161,9 +167,7 @@ func (d *DetailedTxHandler) txLoop() {
 		select {
 		case event := <-d.txsCh:
 			dt := d.traceTx(event)
-			if d.dtxCh != nil {
-				d.dtxCh <- core.NewDetailedTxsEvent{Txs: dt}
-			}
+			d.dtxFeed.Send(core.NewDetailedTxsEvent{Txs: dt})
 		}
 	}
 
