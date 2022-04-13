@@ -3,19 +3,17 @@ package eth
 import (
 	"context"
 	"encoding/json"
-	"errors"
 	"fmt"
 	"math/big"
-	"time"
+	"os"
 
 	"github.com/ethereum/go-ethereum/core"
 	"github.com/ethereum/go-ethereum/core/state"
 	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/ethereum/go-ethereum/core/vm"
 	"github.com/ethereum/go-ethereum/eth/tracers"
-	"github.com/ethereum/go-ethereum/eth/tracers/logger"
+	"github.com/ethereum/go-ethereum/eth/tracers/native"
 	"github.com/ethereum/go-ethereum/event"
-	"github.com/ethereum/go-ethereum/internal/ethapi"
 )
 
 type DetailedTxHandler struct {
@@ -24,14 +22,12 @@ type DetailedTxHandler struct {
 	txsSub  event.Subscription
 	dtxFeed event.Feed
 	scope   event.SubscriptionScope
-	tracer  *tracers.API
 }
 
 func NewDetailedTxHandler(backend *Ethereum) *DetailedTxHandler {
 	dh := &DetailedTxHandler{
 		backend: backend,
 		txsCh:   make(chan core.NewTxsEvent),
-		tracer:  tracers.NewAPI(backend.APIBackend),
 	}
 	dh.txsSub = backend.txPool.SubscribeNewTxsEvent(dh.txsCh)
 	go dh.txLoop()
@@ -47,44 +43,19 @@ func (d *DetailedTxHandler) customTrace(ctx context.Context, message core.Messag
 	config *tracers.TraceConfig) (interface{}, error) {
 	// Assemble the structured logger or the JavaScript tracer
 	var (
-		tracer    vm.EVMLogger
 		err       error
 		txContext = core.NewEVMTxContext(message)
 	)
-	switch {
-	case config == nil:
-		tracer = logger.NewStructLogger(nil)
-	case config.Tracer != nil:
-		// Define a meaningful timeout of a single transaction trace
-		timeout := 5 * time.Second
-		if config.Timeout != nil {
-			if timeout, err = time.ParseDuration(*config.Timeout); err != nil {
-				return nil, err
-			}
-		}
-		if t, err := tracers.New(*config.Tracer, txctx); err != nil {
-			return nil, err
-		} else {
-			deadlineCtx, cancel := context.WithTimeout(ctx, timeout)
-			go func() {
-				<-deadlineCtx.Done()
-				if errors.Is(deadlineCtx.Err(), context.DeadlineExceeded) {
-					t.Stop(errors.New("execution timeout"))
-				}
-			}()
-			defer cancel()
-			tracer = t
-		}
-	default:
-		tracer = logger.NewStructLogger(config.Config)
-	}
+
+	tracer := native.NewLogTracer()
+
 	// Run the transaction with tracing enabled.
 	vmenv := vm.NewEVM(vmctx, txContext, statedb, d.backend.APIBackend.ChainConfig(), vm.Config{Debug: true, Tracer: tracer, NoBaseFee: true})
 
 	// Call Prepare to clear out the statedb access list
 	statedb.Prepare(txctx.TxHash, txctx.TxIndex)
 
-	result, err := core.ApplyMessage(vmenv, message, new(core.GasPool).AddGas(message.Gas()))
+	_, err = core.ApplyMessage(vmenv, message, new(core.GasPool).AddGas(message.Gas()))
 	if err != nil {
 		switch tracer := tracer.(type) {
 		case tracers.Tracer:
@@ -99,19 +70,6 @@ func (d *DetailedTxHandler) customTrace(ctx context.Context, message core.Messag
 
 	// Depending on the tracer type, format and return the output.
 	switch tracer := tracer.(type) {
-	case *logger.StructLogger:
-		// If the result contains a revert reason, return it.
-		returnVal := fmt.Sprintf("%x", result.Return())
-		if len(result.Revert()) > 0 {
-			returnVal = fmt.Sprintf("%x", result.Revert())
-		}
-		return &ethapi.ExecutionResult{
-			Gas:         result.UsedGas,
-			Failed:      result.Failed(),
-			ReturnValue: returnVal,
-			StructLogs:  ethapi.FormatLogs(tracer.StructLogs()),
-		}, nil
-
 	case tracers.Tracer:
 		return tracer.GetResult()
 
@@ -140,7 +98,8 @@ func (d *DetailedTxHandler) makeDetailedTx(tx *types.Transaction) (*types.Detail
 	}
 	jsond, ok := res.(json.RawMessage)
 	if !ok {
-		panic("bad response type")
+		fmt.Fprintf(os.Stderr, "DetailedTxHandler customTrace bad response type\n") //panic("bad response type")
+		return nil, err
 	}
 	ex := types.Logret{}
 	err = json.Unmarshal(jsond, &ex)
@@ -167,7 +126,13 @@ func (d *DetailedTxHandler) txLoop() {
 		select {
 		case event := <-d.txsCh:
 			dt := d.traceTx(event)
-			d.dtxFeed.Send(core.NewDetailedTxsEvent{Txs: dt})
+			dtxa := make([]*types.DetailedTransaction, 0, len(dt))
+			for _, dtx := range dt {
+				if len(dtx.ExecutionResult.Logs) > 0 {
+					dtxa = append(dtxa, dtx)
+				}
+			}
+			d.dtxFeed.Send(core.NewDetailedTxsEvent{Txs: dtxa})
 		}
 	}
 

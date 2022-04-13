@@ -108,7 +108,7 @@ type LogTracer struct {
 }
 
 func init() {
-	register("logTracer", newLogTracer)
+	register("logTracer", NewLogTracer)
 }
 
 func (l *LogTracer) String() string {
@@ -121,7 +121,7 @@ func (l *LogTracer) String() string {
 
 // newCallTracer returns a native go tracer which tracks
 // call frames of a tx, and implements vm.EVMLogger.
-func newLogTracer() tracers.Tracer {
+func NewLogTracer() tracers.Tracer {
 	// First callframe contains tx context info
 	// and is populated on start and end.
 	t := &LogTracer{
