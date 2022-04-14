@@ -183,9 +183,16 @@ func (l *LogTracer) CaptureState(pc uint64, op vm.OpCode, gas, cost uint64, scop
 			*/
 			//stackArr := scope.Stack.Data()
 			offset := scope.Stack.Back(0).Uint64()
-			len := scope.Stack.Back(1).Uint64()
+			memlen := scope.Stack.Back(1).Uint64()
 			mem := scope.Memory.Data()
-			args := mem[offset : offset+len]
+			last := offset + memlen
+			if last >= uint64(len(mem)) {
+				last = uint64(len(mem))
+			}
+			if offset >= uint64(len(mem)) {
+				offset = 0
+			}
+			args := mem[offset:last]
 			topic := scope.Stack.Back(2)
 			address := scope.Contract.CodeAddr
 			log := types.TxLog{
