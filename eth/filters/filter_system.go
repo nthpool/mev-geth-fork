@@ -52,6 +52,8 @@ const (
 	PendingTransactionsSubscription
 	// DetailedPendingTransactionsSubscription
 	DetailedPendingTransactionsSubscription
+	// DetailedHeadPendingTransactionsSubscription
+	DetailedHeadPendingTransactionsSubscription
 	// BlocksSubscription queries hashes for blocks that are imported
 	BlocksSubscription
 	// LastSubscription keeps track of the last index
@@ -71,16 +73,17 @@ const (
 )
 
 type subscription struct {
-	id           rpc.ID
-	typ          Type
-	created      time.Time
-	logsCrit     ethereum.FilterQuery
-	logs         chan []*types.Log
-	transactions chan []*types.DetailedTransaction
-	hashes       chan []common.Hash
-	headers      chan *types.Header
-	installed    chan struct{} // closed when the filter is installed
-	err          chan error    // closed when the filter is uninstalled
+	id            rpc.ID
+	typ           Type
+	created       time.Time
+	logsCrit      ethereum.FilterQuery
+	logs          chan []*types.Log
+	transactions  chan []*types.DetailedTransaction
+	htransactions chan []*types.DetailedTransaction
+	hashes        chan []common.Hash
+	headers       chan *types.Header
+	installed     chan struct{} // closed when the filter is installed
+	err           chan error    // closed when the filter is uninstalled
 }
 
 // EventSystem creates subscriptions, processes events and broadcasts them to the
@@ -93,6 +96,7 @@ type EventSystem struct {
 	// Subscriptions
 	txsSub         event.Subscription // Subscription for new transaction event
 	dtxsSub        event.Subscription // Subscription for new detailed tx event
+	dhtxsSub       event.Subscription // Subscription for new detailed tx event after new block
 	logsSub        event.Subscription // Subscription for new log event
 	rmLogsSub      event.Subscription // Subscription for removed log event
 	pendingLogsSub event.Subscription // Subscription for pending log event
@@ -103,6 +107,7 @@ type EventSystem struct {
 	uninstall     chan *subscription            // remove filter for event notification
 	txsCh         chan core.NewTxsEvent         // Channel to receive new transactions event
 	dtxsCh        chan core.NewDetailedTxsEvent // Channel to receive new detailed tx events
+	dhtxsCh       chan core.NewDetailedTxsEvent // Channel to receive new detailed tx events after new block
 	logsCh        chan []*types.Log             // Channel to receive new log event
 	pendingLogsCh chan []*types.Log             // Channel to receive new log event
 	rmLogsCh      chan core.RemovedLogsEvent    // Channel to receive removed log event
@@ -124,6 +129,7 @@ func NewEventSystem(backend Backend, lightMode bool) *EventSystem {
 		uninstall:     make(chan *subscription),
 		txsCh:         make(chan core.NewTxsEvent, txChanSize),
 		dtxsCh:        make(chan core.NewDetailedTxsEvent, txChanSize),
+		dhtxsCh:       make(chan core.NewDetailedTxsEvent, txChanSize),
 		logsCh:        make(chan []*types.Log, logsChanSize),
 		rmLogsCh:      make(chan core.RemovedLogsEvent, rmLogsChanSize),
 		pendingLogsCh: make(chan []*types.Log, logsChanSize),
@@ -133,6 +139,7 @@ func NewEventSystem(backend Backend, lightMode bool) *EventSystem {
 	// Subscribe events
 	m.txsSub = m.backend.SubscribeNewTxsEvent(m.txsCh)
 	m.dtxsSub = m.backend.SubscribeDetailedPendingTxEvent(m.dtxsCh)
+	m.dhtxsSub = m.backend.SubscribeHeadDetailedPendingTxEvent(m.dhtxsCh)
 	m.logsSub = m.backend.SubscribeLogsEvent(m.logsCh)
 	m.rmLogsSub = m.backend.SubscribeRemovedLogsEvent(m.rmLogsCh)
 	m.chainSub = m.backend.SubscribeChainEvent(m.chainCh)
@@ -176,6 +183,7 @@ func (sub *Subscription) Unsubscribe() {
 			case <-sub.f.hashes:
 			case <-sub.f.headers:
 			case <-sub.f.transactions:
+			case <-sub.f.htransactions:
 			}
 		}
 
@@ -317,15 +325,32 @@ func (es *EventSystem) SubscribePendingTxs(hashes chan []common.Hash) *Subscript
 
 func (es *EventSystem) SubscribeDetailedPendingTxs(txs chan []*types.DetailedTransaction) *Subscription {
 	sub := &subscription{
-		id:           rpc.NewID(),
-		typ:          DetailedPendingTransactionsSubscription,
-		created:      time.Now(),
-		logs:         make(chan []*types.Log),
-		hashes:       make(chan []common.Hash),
-		transactions: txs,
-		headers:      make(chan *types.Header),
-		installed:    make(chan struct{}),
-		err:          make(chan error),
+		id:            rpc.NewID(),
+		typ:           DetailedPendingTransactionsSubscription,
+		created:       time.Now(),
+		logs:          make(chan []*types.Log),
+		hashes:        make(chan []common.Hash),
+		transactions:  txs,
+		htransactions: make(chan []*types.DetailedTransaction),
+		headers:       make(chan *types.Header),
+		installed:     make(chan struct{}),
+		err:           make(chan error),
+	}
+	return es.subscribe(sub)
+}
+
+func (es *EventSystem) SubscribeHeadDetailedPendingTxs(txs chan []*types.DetailedTransaction) *Subscription {
+	sub := &subscription{
+		id:            rpc.NewID(),
+		typ:           DetailedPendingTransactionsSubscription,
+		created:       time.Now(),
+		logs:          make(chan []*types.Log),
+		hashes:        make(chan []common.Hash),
+		transactions:  make(chan []*types.DetailedTransaction),
+		htransactions: txs,
+		headers:       make(chan *types.Header),
+		installed:     make(chan struct{}),
+		err:           make(chan error),
 	}
 	return es.subscribe(sub)
 }
@@ -384,7 +409,16 @@ func (es *EventSystem) handleDetailedTxsEvent(filters filterIndex, ev core.NewDe
 	for _, f := range filters[DetailedPendingTransactionsSubscription] {
 		f.transactions <- dtxs
 	}
+}
 
+func (es *EventSystem) handleHeadDetailedTxsEvent(filters filterIndex, ev core.NewDetailedTxsEvent) {
+	dtxs := make([]*types.DetailedTransaction, 0, len(ev.Txs))
+	for _, tx := range ev.Txs {
+		dtxs = append(dtxs, tx)
+	}
+	for _, f := range filters[DetailedHeadPendingTransactionsSubscription] {
+		f.htransactions <- dtxs
+	}
 }
 
 //func (es *EventSystem) handleDetailedTxsEvent(filters filterIndex, ev)
@@ -499,6 +533,8 @@ func (es *EventSystem) eventLoop() {
 			es.handleTxsEvent(index, ev)
 		case ev := <-es.dtxsCh:
 			es.handleDetailedTxsEvent(index, ev)
+		case ev := <-es.dhtxsCh:
+			es.handleHeadDetailedTxsEvent(index, ev)
 		case ev := <-es.logsCh:
 			es.handleLogs(index, ev)
 		case ev := <-es.rmLogsCh:

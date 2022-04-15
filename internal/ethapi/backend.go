@@ -85,6 +85,7 @@ type Backend interface {
 	TxPoolContentFrom(addr common.Address) (types.Transactions, types.Transactions)
 	SubscribeNewTxsEvent(chan<- core.NewTxsEvent) event.Subscription
 	SubscribeDetailedPendingTxEvent(chan<- core.NewDetailedTxsEvent) event.Subscription
+	SubscribeHeadDetailedPendingTxEvent(chan<- core.NewDetailedTxsEvent) event.Subscription
 
 	// Filter API
 	BloomStatus() (uint64, uint64)

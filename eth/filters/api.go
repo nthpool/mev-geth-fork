@@ -204,6 +204,38 @@ func (api *PublicFilterAPI) NewDetailedPendingTransactions(ctx context.Context) 
 	return rpcSub, nil
 }
 
+func (api *PublicFilterAPI) NewHeadDetailedPendingTransactions(ctx context.Context) (*rpc.Subscription, error) {
+	notifier, supported := rpc.NotifierFromContext(ctx)
+	if !supported {
+		return &rpc.Subscription{}, rpc.ErrNotificationsUnsupported
+	}
+
+	rpcSub := notifier.CreateSubscription()
+	go func() {
+		txs := make(chan []*types.DetailedTransaction, 128)
+		pendingTxSub := api.events.SubscribeHeadDetailedPendingTxs(txs)
+
+		for {
+			select {
+			case transactions := <-txs:
+				// To keep the original behaviour, send a single tx in one notification.
+				// TODO(rjl493456442) Send a batch of txs in one notification
+				for _, h := range transactions {
+					notifier.Notify(rpcSub.ID, h)
+				}
+			case <-rpcSub.Err():
+				pendingTxSub.Unsubscribe()
+				return
+			case <-notifier.Closed():
+				pendingTxSub.Unsubscribe()
+				return
+			}
+		}
+	}()
+
+	return rpcSub, nil
+}
+
 // NewBlockFilter creates a filter that fetches blocks that are imported into the chain.
 // It is part of the filter package since polling goes with eth_getFilterChanges.
 //

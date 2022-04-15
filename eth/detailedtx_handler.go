@@ -17,25 +17,35 @@ import (
 )
 
 type DetailedTxHandler struct {
-	backend *Ethereum
-	txsCh   chan core.NewTxsEvent
-	txsSub  event.Subscription
-	dtxFeed event.Feed
-	scope   event.SubscriptionScope
+	backend  *Ethereum
+	txsCh    chan core.NewTxsEvent
+	chainCh  chan core.ChainEvent // Channel to receive new chain event
+	txsSub   event.Subscription
+	chainSub event.Subscription
+	dtxFeed  event.Feed
+	scope    event.SubscriptionScope
+	hDtxFeed event.Feed
+	hScope   event.SubscriptionScope
 }
 
 func NewDetailedTxHandler(backend *Ethereum) *DetailedTxHandler {
 	dh := &DetailedTxHandler{
 		backend: backend,
 		txsCh:   make(chan core.NewTxsEvent),
+		chainCh: make(chan core.ChainEvent),
 	}
 	dh.txsSub = backend.txPool.SubscribeNewTxsEvent(dh.txsCh)
+	dh.chainSub = backend.APIBackend.SubscribeChainEvent(dh.chainCh)
 	go dh.txLoop()
 	return dh
 }
 
 func (d *DetailedTxHandler) SubscribeDetailedPendingTxEvent(dc chan<- core.NewDetailedTxsEvent) event.Subscription {
 	return d.scope.Track(d.dtxFeed.Subscribe(dc))
+}
+
+func (d *DetailedTxHandler) SubscribeHeadDetailedPendingTxEvent(dc chan<- core.NewDetailedTxsEvent) event.Subscription {
+	return d.hScope.Track(d.hDtxFeed.Subscribe(dc))
 }
 
 func (d *DetailedTxHandler) customTrace(ctx context.Context, message core.Message,
@@ -121,6 +131,15 @@ func (d *DetailedTxHandler) traceTx(event core.NewTxsEvent) []*types.DetailedTra
 	return dtxa
 }
 
+func (d *DetailedTxHandler) iteratePendingTxs() {
+	pending := d.backend.txPool.Pending(true)
+	dtxa := make([]*types.DetailedTransaction, 0, len(pending))
+	for _, txs := range pending {
+		dtxa = append(dtxa, d.traceTx(core.NewTxsEvent{Txs: txs})...)
+	}
+	d.hDtxFeed.Send(core.NewDetailedTxsEvent{Txs: dtxa})
+}
+
 func (d *DetailedTxHandler) txLoop() {
 	for {
 		select {
@@ -133,6 +152,8 @@ func (d *DetailedTxHandler) txLoop() {
 				}
 			}
 			d.dtxFeed.Send(core.NewDetailedTxsEvent{Txs: dtxa})
+		case <-d.chainCh:
+			go d.iteratePendingTxs()
 		}
 	}
 

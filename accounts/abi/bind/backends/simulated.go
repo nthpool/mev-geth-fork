@@ -866,6 +866,10 @@ func (b *filterBackend) SubscribeDetailedPendingTxEvent(ch chan<- core.NewDetail
 	return nullSubscription()
 }
 
+func (b *filterBackend) SubscribeHeadDetailedPendingTxEvent(ch chan<- core.NewDetailedTxsEvent) event.Subscription {
+	return nullSubscription()
+}
+
 func (fb *filterBackend) SubscribeChainEvent(ch chan<- core.ChainEvent) event.Subscription {
 	return fb.bc.SubscribeChainEvent(ch)
 }
