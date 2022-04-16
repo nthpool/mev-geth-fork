@@ -132,11 +132,18 @@ func (d *DetailedTxHandler) traceTx(event core.NewTxsEvent) []*types.DetailedTra
 }
 
 func (d *DetailedTxHandler) iteratePendingTxs() {
+	fmt.Println("iteratePendingTxs()")
 	pending := d.backend.txPool.Pending(true)
 	dtxa := make([]*types.DetailedTransaction, 0, len(pending))
 	for _, txs := range pending {
-		dtxa = append(dtxa, d.traceTx(core.NewTxsEvent{Txs: txs})...)
+		dtx := d.traceTx(core.NewTxsEvent{Txs: txs})
+		for _, tx := range dtx {
+			if len(tx.ExecutionResult.Logs) > 0 {
+				dtxa = append(dtxa, tx)
+			}
+		}
 	}
+	fmt.Println("sending ", len(dtxa), " pending txs")
 	d.hDtxFeed.Send(core.NewDetailedTxsEvent{Txs: dtxa})
 }
 

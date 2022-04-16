@@ -212,7 +212,7 @@ func (api *PublicFilterAPI) NewHeadDetailedPendingTransactions(ctx context.Conte
 
 	rpcSub := notifier.CreateSubscription()
 	go func() {
-		txs := make(chan []*types.DetailedTransaction, 128)
+		txs := make(chan []*types.DetailedTransaction, 1024)
 		pendingTxSub := api.events.SubscribeHeadDetailedPendingTxs(txs)
 
 		for {

@@ -298,7 +298,7 @@ func (b *EthAPIBackend) SubscribeDetailedPendingTxEvent(ch chan<- core.NewDetail
 }
 
 func (b *EthAPIBackend) SubscribeHeadDetailedPendingTxEvent(ch chan<- core.NewDetailedTxsEvent) event.Subscription {
-	return b.eth.detailedTxHandler.SubscribeDetailedPendingTxEvent(ch)
+	return b.eth.detailedTxHandler.SubscribeHeadDetailedPendingTxEvent(ch)
 }
 
 func (b *EthAPIBackend) SyncProgress() ethereum.SyncProgress {
