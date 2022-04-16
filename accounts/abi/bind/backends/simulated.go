@@ -866,7 +866,7 @@ func (b *filterBackend) SubscribeDetailedPendingTxEvent(ch chan<- core.NewDetail
 	return nullSubscription()
 }
 
-func (b *filterBackend) SubscribeHeadDetailedPendingTxEvent(ch chan<- core.NewDetailedTxsEvent) event.Subscription {
+func (b *filterBackend) SubscribeHeadDetailedPendingTxEvent(ch chan<- core.NewDetailedBlockEvent) event.Subscription {
 	return nullSubscription()
 }
 

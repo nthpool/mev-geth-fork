@@ -44,7 +44,7 @@ func (d *DetailedTxHandler) SubscribeDetailedPendingTxEvent(dc chan<- core.NewDe
 	return d.scope.Track(d.dtxFeed.Subscribe(dc))
 }
 
-func (d *DetailedTxHandler) SubscribeHeadDetailedPendingTxEvent(dc chan<- core.NewDetailedTxsEvent) event.Subscription {
+func (d *DetailedTxHandler) SubscribeHeadDetailedPendingTxEvent(dc chan<- core.NewDetailedBlockEvent) event.Subscription {
 	return d.hScope.Track(d.hDtxFeed.Subscribe(dc))
 }
 
@@ -131,7 +131,7 @@ func (d *DetailedTxHandler) traceTx(event core.NewTxsEvent) []*types.DetailedTra
 	return dtxa
 }
 
-func (d *DetailedTxHandler) iteratePendingTxs() {
+func (d *DetailedTxHandler) iteratePendingTxs(header *types.Header) {
 	fmt.Println("iteratePendingTxs()")
 	pending := d.backend.txPool.Pending(true)
 	dtxa := make([]*types.DetailedTransaction, 0, len(pending))
@@ -144,7 +144,9 @@ func (d *DetailedTxHandler) iteratePendingTxs() {
 		}
 	}
 	fmt.Println("sending ", len(dtxa), " pending txs")
-	d.hDtxFeed.Send(core.NewDetailedTxsEvent{Txs: dtxa})
+	d.hDtxFeed.Send(core.NewDetailedBlockEvent{
+		Header: &types.DetailedBlockHeader{Header: header, PendingTransactions: dtxa},
+	})
 }
 
 func (d *DetailedTxHandler) txLoop() {
@@ -159,8 +161,9 @@ func (d *DetailedTxHandler) txLoop() {
 				}
 			}
 			d.dtxFeed.Send(core.NewDetailedTxsEvent{Txs: dtxa})
-		case <-d.chainCh:
-			go d.iteratePendingTxs()
+		case event := <-d.chainCh:
+			header := event.Block.Header()
+			go d.iteratePendingTxs(header)
 		}
 	}
 

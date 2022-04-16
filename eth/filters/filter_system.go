@@ -73,17 +73,17 @@ const (
 )
 
 type subscription struct {
-	id            rpc.ID
-	typ           Type
-	created       time.Time
-	logsCrit      ethereum.FilterQuery
-	logs          chan []*types.Log
-	transactions  chan []*types.DetailedTransaction
-	htransactions chan []*types.DetailedTransaction
-	hashes        chan []common.Hash
-	headers       chan *types.Header
-	installed     chan struct{} // closed when the filter is installed
-	err           chan error    // closed when the filter is uninstalled
+	id           rpc.ID
+	typ          Type
+	created      time.Time
+	logsCrit     ethereum.FilterQuery
+	logs         chan []*types.Log
+	transactions chan []*types.DetailedTransaction
+	dBlockHeader chan *types.DetailedBlockHeader
+	hashes       chan []common.Hash
+	headers      chan *types.Header
+	installed    chan struct{} // closed when the filter is installed
+	err          chan error    // closed when the filter is uninstalled
 }
 
 // EventSystem creates subscriptions, processes events and broadcasts them to the
@@ -103,15 +103,15 @@ type EventSystem struct {
 	chainSub       event.Subscription // Subscription for new chain event
 
 	// Channels
-	install       chan *subscription            // install filter for event notification
-	uninstall     chan *subscription            // remove filter for event notification
-	txsCh         chan core.NewTxsEvent         // Channel to receive new transactions event
-	dtxsCh        chan core.NewDetailedTxsEvent // Channel to receive new detailed tx events
-	dhtxsCh       chan core.NewDetailedTxsEvent // Channel to receive new detailed tx events after new block
-	logsCh        chan []*types.Log             // Channel to receive new log event
-	pendingLogsCh chan []*types.Log             // Channel to receive new log event
-	rmLogsCh      chan core.RemovedLogsEvent    // Channel to receive removed log event
-	chainCh       chan core.ChainEvent          // Channel to receive new chain event
+	install       chan *subscription              // install filter for event notification
+	uninstall     chan *subscription              // remove filter for event notification
+	txsCh         chan core.NewTxsEvent           // Channel to receive new transactions event
+	dtxsCh        chan core.NewDetailedTxsEvent   // Channel to receive new detailed tx events
+	dblCh         chan core.NewDetailedBlockEvent // Channel to receive new detailed tx events after new block
+	logsCh        chan []*types.Log               // Channel to receive new log event
+	pendingLogsCh chan []*types.Log               // Channel to receive new log event
+	rmLogsCh      chan core.RemovedLogsEvent      // Channel to receive removed log event
+	chainCh       chan core.ChainEvent            // Channel to receive new chain event
 
 }
 
@@ -129,7 +129,7 @@ func NewEventSystem(backend Backend, lightMode bool) *EventSystem {
 		uninstall:     make(chan *subscription),
 		txsCh:         make(chan core.NewTxsEvent, txChanSize),
 		dtxsCh:        make(chan core.NewDetailedTxsEvent, txChanSize),
-		dhtxsCh:       make(chan core.NewDetailedTxsEvent, txChanSize),
+		dblCh:         make(chan core.NewDetailedBlockEvent, txChanSize),
 		logsCh:        make(chan []*types.Log, logsChanSize),
 		rmLogsCh:      make(chan core.RemovedLogsEvent, rmLogsChanSize),
 		pendingLogsCh: make(chan []*types.Log, logsChanSize),
@@ -139,7 +139,7 @@ func NewEventSystem(backend Backend, lightMode bool) *EventSystem {
 	// Subscribe events
 	m.txsSub = m.backend.SubscribeNewTxsEvent(m.txsCh)
 	m.dtxsSub = m.backend.SubscribeDetailedPendingTxEvent(m.dtxsCh)
-	m.dhtxsSub = m.backend.SubscribeHeadDetailedPendingTxEvent(m.dhtxsCh)
+	m.dhtxsSub = m.backend.SubscribeHeadDetailedPendingTxEvent(m.dblCh)
 	m.logsSub = m.backend.SubscribeLogsEvent(m.logsCh)
 	m.rmLogsSub = m.backend.SubscribeRemovedLogsEvent(m.rmLogsCh)
 	m.chainSub = m.backend.SubscribeChainEvent(m.chainCh)
@@ -183,7 +183,7 @@ func (sub *Subscription) Unsubscribe() {
 			case <-sub.f.hashes:
 			case <-sub.f.headers:
 			case <-sub.f.transactions:
-			case <-sub.f.htransactions:
+			case <-sub.f.dBlockHeader:
 			}
 		}
 
@@ -325,32 +325,32 @@ func (es *EventSystem) SubscribePendingTxs(hashes chan []common.Hash) *Subscript
 
 func (es *EventSystem) SubscribeDetailedPendingTxs(txs chan []*types.DetailedTransaction) *Subscription {
 	sub := &subscription{
-		id:            rpc.NewID(),
-		typ:           DetailedPendingTransactionsSubscription,
-		created:       time.Now(),
-		logs:          make(chan []*types.Log),
-		hashes:        make(chan []common.Hash),
-		transactions:  txs,
-		htransactions: make(chan []*types.DetailedTransaction),
-		headers:       make(chan *types.Header),
-		installed:     make(chan struct{}),
-		err:           make(chan error),
+		id:           rpc.NewID(),
+		typ:          DetailedPendingTransactionsSubscription,
+		created:      time.Now(),
+		logs:         make(chan []*types.Log),
+		hashes:       make(chan []common.Hash),
+		transactions: txs,
+		dBlockHeader: make(chan *types.DetailedBlockHeader),
+		headers:      make(chan *types.Header),
+		installed:    make(chan struct{}),
+		err:          make(chan error),
 	}
 	return es.subscribe(sub)
 }
 
-func (es *EventSystem) SubscribeHeadDetailedPendingTxs(txs chan []*types.DetailedTransaction) *Subscription {
+func (es *EventSystem) SubscribeHeadDetailedPendingTxs(bh chan *types.DetailedBlockHeader) *Subscription {
 	sub := &subscription{
-		id:            rpc.NewID(),
-		typ:           DetailedHeadPendingTransactionsSubscription,
-		created:       time.Now(),
-		logs:          make(chan []*types.Log),
-		hashes:        make(chan []common.Hash),
-		transactions:  make(chan []*types.DetailedTransaction),
-		htransactions: txs,
-		headers:       make(chan *types.Header),
-		installed:     make(chan struct{}),
-		err:           make(chan error),
+		id:           rpc.NewID(),
+		typ:          DetailedHeadPendingTransactionsSubscription,
+		created:      time.Now(),
+		logs:         make(chan []*types.Log),
+		hashes:       make(chan []common.Hash),
+		transactions: make(chan []*types.DetailedTransaction),
+		dBlockHeader: bh,
+		headers:      make(chan *types.Header),
+		installed:    make(chan struct{}),
+		err:          make(chan error),
 	}
 	return es.subscribe(sub)
 }
@@ -411,13 +411,9 @@ func (es *EventSystem) handleDetailedTxsEvent(filters filterIndex, ev core.NewDe
 	}
 }
 
-func (es *EventSystem) handleHeadDetailedTxsEvent(filters filterIndex, ev core.NewDetailedTxsEvent) {
-	dtxs := make([]*types.DetailedTransaction, 0, len(ev.Txs))
-	for _, tx := range ev.Txs {
-		dtxs = append(dtxs, tx)
-	}
+func (es *EventSystem) handleHeadDetailedTxsEvent(filters filterIndex, ev core.NewDetailedBlockEvent) {
 	for _, f := range filters[DetailedHeadPendingTransactionsSubscription] {
-		f.htransactions <- dtxs
+		f.dBlockHeader <- ev.Header
 	}
 }
 
@@ -533,7 +529,7 @@ func (es *EventSystem) eventLoop() {
 			es.handleTxsEvent(index, ev)
 		case ev := <-es.dtxsCh:
 			es.handleDetailedTxsEvent(index, ev)
-		case ev := <-es.dhtxsCh:
+		case ev := <-es.dblCh:
 			es.handleHeadDetailedTxsEvent(index, ev)
 		case ev := <-es.logsCh:
 			es.handleLogs(index, ev)

@@ -246,7 +246,7 @@ func (b *LesApiBackend) SubscribeDetailedPendingTxEvent(ch chan<- core.NewDetail
 	})
 }
 
-func (b *LesApiBackend) SubscribeHeadDetailedPendingTxEvent(ch chan<- core.NewDetailedTxsEvent) event.Subscription {
+func (b *LesApiBackend) SubscribeHeadDetailedPendingTxEvent(ch chan<- core.NewDetailedBlockEvent) event.Subscription {
 	return event.NewSubscription(func(quit <-chan struct{}) error {
 		<-quit
 		return nil

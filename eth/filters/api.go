@@ -212,22 +212,18 @@ func (api *PublicFilterAPI) NewHeadDetailedPendingTransactions(ctx context.Conte
 
 	rpcSub := notifier.CreateSubscription()
 	go func() {
-		txs := make(chan []*types.DetailedTransaction, 1024)
-		pendingTxSub := api.events.SubscribeHeadDetailedPendingTxs(txs)
+		dh := make(chan *types.DetailedBlockHeader, 128)
+		dhSub := api.events.SubscribeHeadDetailedPendingTxs(dh)
 
 		for {
 			select {
-			case transactions := <-txs:
-				// To keep the original behaviour, send a single tx in one notification.
-				// TODO(rjl493456442) Send a batch of txs in one notification
-				for _, h := range transactions {
-					notifier.Notify(rpcSub.ID, h)
-				}
+			case blockh := <-dh:
+				notifier.Notify(rpcSub.ID, blockh)
 			case <-rpcSub.Err():
-				pendingTxSub.Unsubscribe()
+				dhSub.Unsubscribe()
 				return
 			case <-notifier.Closed():
-				pendingTxSub.Unsubscribe()
+				dhSub.Unsubscribe()
 				return
 			}
 		}

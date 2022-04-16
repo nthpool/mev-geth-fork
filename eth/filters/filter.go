@@ -39,7 +39,7 @@ type Backend interface {
 
 	SubscribeNewTxsEvent(chan<- core.NewTxsEvent) event.Subscription
 	SubscribeDetailedPendingTxEvent(chan<- core.NewDetailedTxsEvent) event.Subscription
-	SubscribeHeadDetailedPendingTxEvent(chan<- core.NewDetailedTxsEvent) event.Subscription
+	SubscribeHeadDetailedPendingTxEvent(chan<- core.NewDetailedBlockEvent) event.Subscription
 	SubscribeChainEvent(ch chan<- core.ChainEvent) event.Subscription
 	SubscribeRemovedLogsEvent(ch chan<- core.RemovedLogsEvent) event.Subscription
 	SubscribeLogsEvent(ch chan<- []*types.Log) event.Subscription

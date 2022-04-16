@@ -26,6 +26,8 @@ type NewTxsEvent struct{ Txs []*types.Transaction }
 
 type NewDetailedTxsEvent struct{ Txs []*types.DetailedTransaction }
 
+type NewDetailedBlockEvent struct{ Header *types.DetailedBlockHeader }
+
 // NewMinedBlockEvent is posted when a block has been imported.
 type NewMinedBlockEvent struct{ Block *types.Block }
 

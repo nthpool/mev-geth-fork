@@ -297,7 +297,7 @@ func (b *EthAPIBackend) SubscribeDetailedPendingTxEvent(ch chan<- core.NewDetail
 	return b.eth.detailedTxHandler.SubscribeDetailedPendingTxEvent(ch)
 }
 
-func (b *EthAPIBackend) SubscribeHeadDetailedPendingTxEvent(ch chan<- core.NewDetailedTxsEvent) event.Subscription {
+func (b *EthAPIBackend) SubscribeHeadDetailedPendingTxEvent(ch chan<- core.NewDetailedBlockEvent) event.Subscription {
 	return b.eth.detailedTxHandler.SubscribeHeadDetailedPendingTxEvent(ch)
 }
 

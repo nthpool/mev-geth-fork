@@ -22,3 +22,8 @@ type DetailedTransaction struct {
 	Inner           *Transaction
 	ExecutionResult Logret
 }
+
+type DetailedBlockHeader struct {
+	Header              *Header
+	PendingTransactions []*DetailedTransaction
+}
