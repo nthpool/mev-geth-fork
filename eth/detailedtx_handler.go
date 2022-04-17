@@ -60,7 +60,9 @@ func (d *DetailedTxHandler) customTrace(ctx context.Context, message core.Messag
 	tracer := native.NewLogTracer()
 
 	// Run the transaction with tracing enabled.
-	vmenv := vm.NewEVM(vmctx, txContext, statedb, d.backend.APIBackend.ChainConfig(), vm.Config{Debug: true, Tracer: tracer, NoBaseFee: true})
+	vmenv := vm.NewEVM(vmctx, txContext, statedb,
+		d.backend.APIBackend.ChainConfig(), vm.Config{Debug: true, Tracer: tracer,
+			NoBaseFee: false /* want to use the pending block base fee*/})
 
 	// Call Prepare to clear out the statedb access list
 	statedb.Prepare(txctx.TxHash, txctx.TxIndex)
@@ -92,6 +94,7 @@ func (d *DetailedTxHandler) makeDetailedTx(tx *types.Transaction) (*types.Detail
 	config := d.backend.BlockChain().Config()
 	//blockNumber := rpc.PendingBlockNumber.Int64()
 	block := d.backend.BlockChain().CurrentBlock()
+	pBlock := d.backend.APIBackend.eth.miner.PendingBlock()
 	signer := types.MakeSigner(config, big.NewInt(0).SetUint64(block.NumberU64()))
 	msg, err := tx.AsMessage(signer, block.BaseFee())
 	if err != nil {
@@ -102,6 +105,8 @@ func (d *DetailedTxHandler) makeDetailedTx(tx *types.Transaction) (*types.Detail
 		return nil, err
 	}
 	vmctx := core.NewEVMBlockContext(block.Header(), d.backend.BlockChain(), nil)
+	// set the base fee to the pending block base fee
+	vmctx.BaseFee = pBlock.BaseFee()
 	res, err := d.customTrace(context.TODO(), msg, new(tracers.Context), vmctx, statedb, nil)
 	if err != nil {
 		return nil, err
