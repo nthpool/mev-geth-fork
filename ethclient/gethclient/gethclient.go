@@ -180,7 +180,7 @@ func (ec *Client) SubscribePendingTransactions(ctx context.Context, ch chan<- co
 }
 
 // SubscribeDetailedPendingTransactions subscribes to new pending transactions.
-func (ec *Client) SubscribeDetailedPendingTransactions(ctx context.Context, tx chan<- []*types.DetailedTransaction) (*rpc.ClientSubscription, error) {
+func (ec *Client) SubscribeDetailedPendingTransactions(ctx context.Context, tx chan<- *types.DetailedTransaction) (*rpc.ClientSubscription, error) {
 	return ec.c.EthSubscribe(ctx, tx, "newDetailedPendingTransactions")
 }
 
