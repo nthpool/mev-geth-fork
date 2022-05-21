@@ -20,7 +20,7 @@ COPY --from=builder /go-ethereum/build/bin/geth /usr/local/bin/
 EXPOSE 8545 8546 30303 30303/udp
 ENTRYPOINT ["geth"]
 CMD ["--maxpeers", \
-     "100" , \
+     "50" , \
      "--ws", \
      "--ws.addr", \
      "0.0.0.0", \
