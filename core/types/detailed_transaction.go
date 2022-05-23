@@ -1,5 +1,7 @@
 package types
 
+import "github.com/ethereum/go-ethereum/common"
+
 type TxCall struct {
 	Address  string `json:"address"`
 	Calldata string `json:"calldata"`
@@ -25,5 +27,6 @@ type DetailedTransaction struct {
 
 type DetailedBlockHeader struct {
 	Header              *Header
+	Transactions        []common.Hash
 	PendingTransactions []*DetailedTransaction
 }
