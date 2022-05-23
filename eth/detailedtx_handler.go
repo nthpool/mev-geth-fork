@@ -7,6 +7,7 @@ import (
 	"math/big"
 	"os"
 
+	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/core"
 	"github.com/ethereum/go-ethereum/core/state"
 	"github.com/ethereum/go-ethereum/core/types"
@@ -136,8 +137,14 @@ func (d *DetailedTxHandler) traceTx(event core.NewTxsEvent) []*types.DetailedTra
 	return dtxa
 }
 
-func (d *DetailedTxHandler) iteratePendingTxs(header *types.Header) {
-	fmt.Println("iteratePendingTxs()")
+func (d *DetailedTxHandler) addTransactions(block *types.Block) {
+	fmt.Println("addTransactions()")
+	header := block.Header()
+	txs := block.Transactions()
+	txHash := make([]common.Hash, 0, len(txs))
+	for _, t := range txs {
+		txHash = append(txHash, t.Hash())
+	}
 	pending := d.backend.txPool.Pending(true)
 	dtxa := make([]*types.DetailedTransaction, 0, len(pending))
 	for _, txs := range pending {
@@ -150,7 +157,7 @@ func (d *DetailedTxHandler) iteratePendingTxs(header *types.Header) {
 	}
 	fmt.Println("sending ", len(dtxa), " pending txs")
 	d.hDtxFeed.Send(core.NewDetailedBlockEvent{
-		Header: &types.DetailedBlockHeader{Header: header, PendingTransactions: dtxa},
+		Header: &types.DetailedBlockHeader{Header: header, Transactions: txHash, PendingTransactions: dtxa},
 	})
 }
 
@@ -161,14 +168,13 @@ func (d *DetailedTxHandler) txLoop() {
 			dt := d.traceTx(event)
 			dtxa := make([]*types.DetailedTransaction, 0, len(dt))
 			for _, dtx := range dt {
-				if len(dtx.ExecutionResult.Logs) > 0 {
+				if dtx.ExecutionResult.Valid {
 					dtxa = append(dtxa, dtx)
 				}
 			}
 			d.dtxFeed.Send(core.NewDetailedTxsEvent{Txs: dtxa})
 		case event := <-d.chainCh:
-			header := event.Block.Header()
-			go d.iteratePendingTxs(header)
+			go d.addTransactions(event.Block)
 		}
 	}
 
